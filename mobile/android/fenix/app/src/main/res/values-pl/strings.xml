@@ -5,31 +5,7 @@
   <!-- App name for private browsing mode. %s is the name of the app (for example "Firefox"). -->
   <string name="app_name_private_4">%s (tryb prywatny)</string>
   <!--
-    Home Fragment
 
-    Content description (not visible, for screen readers etc.): "Three dot" menu button.
-  -->
-  <string name="content_description_menu">Więcej opcji</string>
-  <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Przejdź do trybu prywatnego</string>
-  <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Wyjdź z trybu prywatnego</string>
-  <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing">Tryb prywatny</string>
-  <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
-  <string name="search_hint">Wpisz adres lub szukaj</string>
-  <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
-  <string name="search_hint_general_engine">Szukaj w Internecie</string>
-  <!-- Placeholder text shown in search bar when using history search -->
-  <string name="history_search_hint">Szukaj w historii</string>
-  <!-- Placeholder text shown in search bar when using bookmarks search -->
-  <string name="bookmark_search_hint">Szukaj w zakładkach</string>
-  <!-- Placeholder text shown in search bar when using tabs search -->
-  <string name="tab_search_hint">Szukaj w kartach</string>
-  <!-- Placeholder text shown in the search bar when using application search engines -->
-  <string name="application_search_hint">Szukaj</string>
-  <!-- No Open Tabs Message Description -->
-  <string name="no_open_tabs_description">Tutaj będą wyświetlane otwarte karty.</string>
   <!-- No Private Tabs Message Description -->
   <string name="no_private_tabs_description">Tutaj będą wyświetlane prywatne karty.</string>
   <!-- Tab tray multi select title in app bar. %1$d is the number of tabs selected -->
