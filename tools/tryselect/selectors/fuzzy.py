@@ -282,6 +282,9 @@ def run(
         graph_config = generator.graph_config
         assert generator.target_task_graph
         label_to_task_id = generator.label_to_taskid
+        # TODO: need some mechanism to make sure the `vcs_wait_task` morph
+        # is signaled to: a) create the vcs wait task, and b) put it upstream
+        # of the try tasks
         morphed = generator.morphed_task_graph
         params = generator.parameters
         print("Scheduling tasks...")

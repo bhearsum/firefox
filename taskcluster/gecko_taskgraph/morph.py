@@ -282,3 +282,9 @@ def _add_try_task_duplicates(taskgraph, label_to_taskid, parameters, graph_confi
             elif task.label in tasks:
                 task.attributes["task_duplicates"] = rebuild
     return taskgraph, label_to_taskid
+
+
+@register_morph
+def add_vcs_wait_task(taskgraph, label_to_taskid, parameters, graph_config):
+    vcs_wait_task = {}
+    for task in taskgraph.tasks.values():
