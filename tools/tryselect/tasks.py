@@ -89,14 +89,7 @@ def add_chunk_patterns(tg):
     return tg
 
 
-def generate_tasks(
-    param_spec=None,
-    full=False,
-    disable_target_task_filter=False,
-    target_tasks_method=None,
-):
-    attr = "full_task_set" if full else "target_task_set"
-
+def get_tgg(param_spec, disable_target_task_filter, target_tasks_method):
     overrides = {
         "filters": [
             (
@@ -113,11 +106,23 @@ def generate_tasks(
     if target_tasks_method:
         overrides["target_tasks_method"] = target_tasks_method
         overrides["filters"].insert(0, "target_tasks_method")
-
     params = parameters_loader(param_spec, strict=False, overrides=overrides)
     root = os.path.join(build.topsrcdir, "taskcluster")
     taskgraph.fast = True
-    generator = TaskGraphGenerator(root_dir=root, parameters=params)
+    return TaskGraphGenerator(root_dir=root, parameters=params)
+
+
+def generate_tasks(
+    param_spec=None,
+    full=False,
+    disable_target_task_filter=False,
+    target_tasks_method=None,
+    generator=None,
+):
+    attr = "full_task_set" if full else "target_task_set"
+
+    if not generator:
+        generator = get_tgg(param_spec, disable_target_task_filter, target_tasks_method)
 
     cache_dir = os.path.join(
         get_state_dir(specific_to_topsrcdir=True), "cache", "taskgraph"
