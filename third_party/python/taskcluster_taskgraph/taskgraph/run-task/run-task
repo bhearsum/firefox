@@ -985,6 +985,8 @@ def vcs_checkout_from_args(options):
                     "Hg requires that at least one of a ref or revision " "is provided"
                 )
 
+            # TODO: if revision is a lando URL, poll lando until landing
+            # is completed, and overwrite with the real revision from there
             revision = hg_checkout(
                 options["checkout"],
                 options["head-repo"],
