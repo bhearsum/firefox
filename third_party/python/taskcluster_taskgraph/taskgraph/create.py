@@ -8,6 +8,7 @@ import os
 import sys
 from concurrent import futures
 
+import mohawk
 from slugid import nice as slugid
 
 from taskgraph.util import json
@@ -123,14 +124,39 @@ def create_task(session, task_id, label, task_def):
         return
 
     logger.info(f"Creating task with taskId {task_id} for {label}")
+    # when this is a root url instead of proxy it needs to have /api at the end, eg:
+    # https://firefox-ci-tc.services.mozilla.com/api
     proxy_url = os.environ.get("TASKCLUSTER_PROXY_URL", "http://taskcluster").rstrip(
         "/"
     )
+    url = f"{proxy_url}/queue/v1/task/{task_id}"
+    headers = {
+        "Content-Type": "application/json",
+    }
+    payload = json.dumps(task_def)
+    client_id = os.environ.get("TASKCLUSTER_CLIENT_ID")
+    access_token = os.environ.get("TASKCLUSTER_ACCESS_TOKEN")
+    if client_id and access_token:
+        sender = mohawk.Sender(
+            credentials={
+                "id": client_id,
+                "key": access_token,
+                "algorithm": "sha256",
+            },
+            ext={},
+            url=url,
+            content=payload,
+            content_type="application/json",
+            method="PUT",
+        )
+        headers["Authorization"] = sender.request_header
     res = session.put(
-        f"{proxy_url}/queue/v1/task/{task_id}",
-        json=task_def,
+        url,
+        data=payload,
+        headers=headers,
     )
     if res.status_code != 200:
+        import pdb; pdb.set_trace()
         try:
             logger.error(res.json()["message"])
         except Exception:
