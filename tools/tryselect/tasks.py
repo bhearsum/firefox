@@ -108,7 +108,8 @@ def get_tgg(param_spec, disable_target_task_filter, target_tasks_method):
         overrides["filters"].insert(0, "target_tasks_method")
     params = parameters_loader(param_spec, strict=False, overrides=overrides)
     root = os.path.join(build.topsrcdir, "taskcluster")
-    taskgraph.fast = True
+    # temp: disable because it breaks a bunch of things...
+    # taskgraph.fast = True
     return TaskGraphGenerator(root_dir=root, parameters=params)
 
 
@@ -145,6 +146,9 @@ def generate_tasks(
     cwd = os.getcwd()
     os.chdir(build.topsrcdir)
 
+    # TODO: caching doesn't work correctly for direct push; we end up redoing
+    # the work if we've retrieved a cached version, because the `generator`
+    # object hasn't been exercised
     def generate(attr):
         try:
             tg = getattr(generator, attr)

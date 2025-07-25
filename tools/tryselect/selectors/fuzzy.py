@@ -3,14 +3,21 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import os
 import sys
 from pathlib import PurePath
 
 from gecko_taskgraph.target_tasks import filter_by_uncommon_try_tasks
 
+from mozbuild.base import MozbuildObject
+from taskgraph.create import create_tasks
+from slugid import nice as slugid
+from taskgraph.generator import TaskGraphGenerator
+from taskgraph.parameters import parameters_loader
+
 from ..cli import BaseTryParser
 from ..push import check_working_directory, generate_try_task_config, push_to_try
-from ..tasks import filter_tasks_by_paths, filter_tasks_by_worker_type, generate_tasks
+from ..tasks import filter_tasks_by_paths, filter_tasks_by_worker_type, generate_tasks, get_tgg
 from ..util.fzf import (
     FZF_NOT_FOUND,
     PREVIEW_SCRIPT,
@@ -95,6 +102,15 @@ class FuzzyParser(BaseTryParser):
                 "makes them appear again.",
             },
         ],
+        # TODO: this belongs in cli.py
+        [
+            ["--direct-scheduling"],
+            {
+                "action": "store_true",
+                "default": False,
+                "help": "Schedule tasks immediately in Taskcluster.",
+            },
+        ],
     ]
     common_groups = ["push", "task", "preset"]
     task_configs = [
@@ -135,6 +151,7 @@ def run(
     push_to_vcs=False,
     show_chunk_numbers=False,
     new_test_config=False,
+    direct_scheduling=False,
 ):
     fzf = fzf_bootstrap(update)
 
@@ -241,14 +258,52 @@ def run(
         args.append("paths={}".format(":".join(test_paths)))
     if args:
         msg = "{} {}".format(msg, "&".join(args))
-    return push_to_try(
-        "fuzzy",
-        message.format(msg=msg),
-        try_task_config=generate_try_task_config(
-            "fuzzy", selected, params=try_config_params
-        ),
-        stage_changes=stage_changes,
-        dry_run=dry_run,
-        closed_tree=closed_tree,
-        push_to_vcs=push_to_vcs,
-    )
+    if direct_scheduling:
+        # TODO: this should probably be implemented in `push-to-try` to make
+        # it easier for other selectors...
+        print("Direct scheduling selected...finalizing task graph")
+        overrides = {
+            "level": "1",
+            "project": "try",
+            "target_tasks_method": "try_tasks",
+            "try_mode": "try_task_config",
+            "try_task_config": {
+                "tasks": list(selected),
+            },
+        }
+        here = os.path.abspath(os.path.dirname(__file__))
+        build = MozbuildObject.from_environment(cwd=here)
+        root = os.path.join(build.topsrcdir, "taskcluster")
+        params = parameters_loader(parameters, strict=False, overrides=overrides)
+        generator = TaskGraphGenerator(root_dir=root, parameters=params)
+        # TODO: this should be the fake decision task...
+        # decision_task_id = slugid()
+        decision_task_id = "ArEDapR-SVyqzJwh6u12oQ"
+        graph_config = generator.graph_config
+        assert generator.target_task_graph
+        label_to_task_id = generator.label_to_taskid
+        morphed = generator.morphed_task_graph
+        params = generator.parameters
+        print("Scheduling tasks...")
+        # TODO: we might need to amend tasks with treeherder routes?
+        # maybe in morphs?
+        # TODO: currently relies on TASKCLUSTER_PROXY_URL
+        # TODO: may need an affordance in create_tasks not to add the decision_task_id
+        # dependency, because we're not creating tasks from within one.
+        # the fake decision task will be created in a morph, and end up being upstream
+        # of the other tasks
+        create_tasks(graph_config, morphed, label_to_task_id, params, decision_task_id)
+        # TODO: in direct scheduling mode we'll still need to push to lando
+        # but we don't actually want it to fire a decision task....
+    else:
+        return push_to_try(
+            "fuzzy",
+            message.format(msg=msg),
+            try_task_config=generate_try_task_config(
+                "fuzzy", selected, params=try_config_params
+            ),
+            stage_changes=stage_changes,
+            dry_run=dry_run,
+            closed_tree=closed_tree,
+            push_to_vcs=push_to_vcs,
+        )
