@@ -22,6 +22,7 @@
 #include "nsRFPService.h"
 #include "nsXULAppAPI.h"
 #include "nsZipArchive.h"
+#include "prenv.h"
 #ifdef XP_WIN
 #  include "WinUtils.h"
 #endif
@@ -408,17 +409,29 @@ NS_IMETHODIMP
 LocaleService::GetDefaultLocale(nsACString& aRetVal) {
   // We don't allow this to change during a session (it's set at build/package
   // time), so we cache the result the first time we're called.
+  // TODO: does this still hold true in a multilocale world? presumably we
+  // don't need to (or don't want to?) support runtime locale switching
   if (mDefaultLocale.IsEmpty()) {
-    nsAutoCString locale;
-    // Try to get the package locale from default.locale in omnijar. If the
-    // default.locale file is not found, item.len will remain 0 and we'll
-    // just use our hard-coded default below.
-    GetGREFileContents("default.locale", &locale);
-    locale.Trim(" \t\n\r");
-#ifdef MOZ_UPDATER
-    // This should never be empty.
-    MOZ_ASSERT(!locale.IsEmpty());
-#endif
+#  ifdef XP_WIN
+    wchar_t localeName[LOCALE_NAME_MAX_LENGTH] = L"";
+    if (!GetUserDefaultLocaleName(localeName, LOCALE_NAME_MAX_LENGTH)) {
+      // TODO: handle error
+    }
+    // TODO: do this conversion better
+    NS_ConvertUTF16toUTF8 locale(localeName);
+#  else
+    // TODO: determine if LANG is the right way to do this on macOS
+    // (it works, but there might be a macOS API that would be better?)
+    // Find the current system language
+    // TODO: probably some sanity checking here?
+    nsCString locale(PR_GetEnv("LANG"));
+    // const char* lang = PR_tstetEnv("LANG");
+    // Map the system language to our locale
+#  endif
+    // TODO: ensure Canonicalize supports all OS lang codes
+    // TODO: some locale codes on windows are definitely not working
+    // eg: our `tl` locale is not used when the system language is Filipino, which it should be
+    // there's probably other edge cases like this
     if (CanonicalizeLanguageId(locale)) {
       mDefaultLocale.Assign(locale);
     }
