@@ -9,6 +9,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutHomeStartupCache: "resource:///modules/AboutHomeStartupCache.sys.mjs",
+  AddonRepository: "resource://gre/modules/addons/AddonRepository.sys.mjs",
   AWToolbarButton: "resource:///modules/aboutwelcome/AWToolbarUtils.sys.mjs",
   ASRouter: "resource:///modules/asrouter/ASRouter.sys.mjs",
   ASRouterDefaultConfig:
@@ -1320,6 +1321,49 @@ BrowserGlue.prototype = {
         // of the PageLoad event. Only runs on windows, since diskInfo
         // is a no-op on other platforms
         task: () => Services.sysinfo.diskInfo,
+      },
+
+      {
+        // TODO: don't run for en-US
+        // TODO: consider running as best effort ?
+        name: "Download dictionary",
+        task: async () => {
+          // TODO: borrowed from browserLanguages.js; should be refactored
+          async function installFromUrl(url, hash, callback) {
+            let telemetryInfo = {
+              source: "about:preferences",
+            };
+            let install = await lazy.AddonManager.getInstallForURL(url, {
+              hash,
+              telemetryInfo,
+            });
+            if (callback) {
+              callback(install.installId.toString());
+            }
+            await install.install();
+            return install.addon;
+          }
+          const locale = Services.locale.defaultLocale;
+          let entries = await lazy.RemoteSettings("language-dictionaries").get({
+            filters: { id: locale },
+          });
+          console.log("got entries: " + entries);
+          if (entries.length) {
+            try {
+              console.log("installing dictionaries!");
+              let ids = entries[0].dictionaries;
+              let addonInfos = await lazy.AddonRepository.getAddonsByIDs(ids);
+              await Promise.all(
+                addonInfos.map(info => installFromUrl(info.sourceURI.spec))
+              );
+              console.log("installed dictionaries!");
+            } catch (e) {
+              console.log("caught error!");
+              console.log(e);
+              Cu.reportError(e);
+            }
+          }
+        }
       },
 
       {
