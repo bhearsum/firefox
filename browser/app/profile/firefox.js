@@ -1476,6 +1476,7 @@ pref("browser.proton.toolbar.version", 0);
 pref("browser.backspace_action", 2);
 
 pref("intl.regional_prefs.use_os_locales", false);
+pref("intl.locale.requested", "");
 
 pref("browser.send_pings", false);
 
