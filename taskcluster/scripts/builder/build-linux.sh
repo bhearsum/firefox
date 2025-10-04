@@ -110,6 +110,7 @@ fi
 
 cd /builds/worker
 
+mkdir -p /builds/worker/checkouts
 $GECKO_PATH/mach python -- \
   $GECKO_PATH/testing/${MOZHARNESS_SCRIPT} \
   ${config_path_cmds} \
@@ -121,3 +122,9 @@ $GECKO_PATH/mach python -- \
   --log-level=debug \
   --work-dir=$WORKSPACE \
   --branch=${MH_BRANCH}
+
+if [ ! -d "/builds/worker/checkouts/l10n-central" ]; then
+  git clone https://github.com/mozilla-l10n/firefox-l10n /builds/worker/checkouts/l10n-central
+fi
+$GECKO_PATH/mach package-multi-locale --locales ach af an ar ast az be bg bn br bs ca ca-valencia cak cs cy da de dsb el en-CA en-GB en-US eo es-AR es-CL es-ES es-MX et eu fa ff fi fr fur fy-NL ga-IE gd gl gn gu-IN he hi-IN hr hsb hu hy-AM ia id is it ja ka kab kk km kn ko lij lt lv mk mr ms my nb-NO ne-NP nl nn-NO oc pa-IN pl pt-BR pt-PT rm ro ru sat sc sco si sk skr sl son sq sr sv-SE szl ta te tg th tl tr trs uk ur uz vi xh zh-CN zh-TW
+cp $MOZ_OBJDIR/dist/*target* /builds/worker/artifacts/
