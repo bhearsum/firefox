@@ -5,12 +5,17 @@
 
 import pprint
 import re
+import threading
 from collections.abc import Mapping
 
 import voluptuous
 
 import taskgraph
 from taskgraph.util.keyed_by import evaluate_keyed_by, iter_dot_path
+
+# Global reentrant lock for thread-safe Schema creation
+# RLock allows the same thread to acquire the lock multiple times (for recursive validation)
+_schema_creation_lock = threading.RLock()
 
 
 def validate_schema(schema, obj, msg_prefix):
@@ -57,7 +62,10 @@ def optionally_keyed_by(*arguments):
                         e.prepend([k, kk])
                         raise
                 return res
-        return Schema(schema)(obj)
+        # Thread-safe Schema creation to prevent race conditions when using
+        # ThreadPoolExecutor for parallel task generation
+        with _schema_creation_lock:
+            return Schema(schema)(obj)
 
     # set to assist autodoc
     setattr(validator, "schema", schema)
