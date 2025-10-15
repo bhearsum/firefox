@@ -5,12 +5,13 @@
 import copy
 import inspect
 import logging
-import multiprocessing
 import os
+import multiprocessing
 import platform
 from concurrent.futures import (
     FIRST_COMPLETED,
     ProcessPoolExecutor,
+    ThreadPoolExecutor,
     wait,
 )
 from dataclasses import dataclass
@@ -309,10 +310,18 @@ class TaskGraphGenerator:
         futures = set()
         edges = set(kind_graph.edges)
 
-        with ProcessPoolExecutor(
-            mp_context=multiprocessing.get_context("fork")
-        ) as executor:
+        # use processes if available; this allows us to use multiple CPU cores
+        # we should revisit this default when free-threaded python is more
+        # stable and performant. in the meantime, allowing the usage of threads
+        # can still be helpful when `fork` multiprocessing is not available
+        # (like windows and mac), and gives users the option to try using
+        # free threaded python to speed things up
+        if "fork" in multiprocessing.get_all_start_methods() and not os.environ.get("TASKGRAPH_USE_THREADS"):
+            factory = lambda: ProcessPoolExecutor(mp_context=multiprocessing.get_context("fork"))
+        else:
+            factory = lambda: ThreadPoolExecutor(max_workers=os.process_cpu_count())
 
+        with factory() as executor:
             def submit_ready_kinds():
                 """Create the next batch of tasks for kinds without dependencies."""
                 nonlocal kinds, edges, futures
@@ -423,14 +432,11 @@ class TaskGraphGenerator:
             )
 
         logger.info("Generating full task set")
-        # Current parallel generation relies on multiprocessing, and forking.
-        # This causes problems on Windows and macOS due to how new processes
-        # are created there, and how doing so reinitializes global variables
-        # that are modified earlier in graph generation, that doesn't get
-        # redone in the new processes. Ideally this would be fixed, or we
-        # would take another approach to parallel kind generation. In the
-        # meantime, it's not supported outside of Linux.
-        if platform.system() != "Linux" or os.environ.get("TASKGRAPH_SERIAL"):
+        # Parallel generation uses ThreadPoolExecutor to load multiple kinds
+        # concurrently. This is thread-safe since all shared state modifications
+        # happen in the main thread, while worker threads only execute
+        # kind.load_tasks() and return results.
+        if os.environ.get("TASKGRAPH_SERIAL"):
             all_tasks = self._load_tasks_serial(kinds, kind_graph, parameters)
         else:
             all_tasks = self._load_tasks_parallel(kinds, kind_graph, parameters)
