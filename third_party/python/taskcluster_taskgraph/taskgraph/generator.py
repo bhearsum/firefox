@@ -10,6 +10,7 @@ import platform
 from concurrent.futures import (
     FIRST_COMPLETED,
     ThreadPoolExecutor,
+    as_completed,
     wait,
 )
 from dataclasses import dataclass
@@ -91,20 +92,86 @@ class Kind:
             self.graph_config,
             write_artifacts=write_artifacts,
         )
-        tasks = [
-            Task(
-                self.name,
-                label=task_dict["label"],
-                description=task_dict["description"],
-                attributes=task_dict["attributes"],
-                task=task_dict["task"],
-                optimization=task_dict.get("optimization"),
-                dependencies=task_dict.get("dependencies"),
-                soft_dependencies=task_dict.get("soft-dependencies"),
-                if_dependencies=task_dict.get("if-dependencies"),
-            )
-            for task_dict in transforms(trans_config, inputs)
-        ]
+
+        # Some kinds have self-referential dependencies and must be processed serially
+        # Check both hardcoded kinds and inspect inputs for same-kind dependencies
+        serial_kinds = {"docker-image", "fetch", "toolchain"}
+        use_serial = self.name in serial_kinds
+
+        # Convert inputs to a list so we can inspect and reuse it
+        input_list = list(inputs)
+
+        if not use_serial:
+            # Check if any input has dependencies on tasks within the same kind
+            for input_item in input_list:
+                if isinstance(input_item, dict) and "dependencies" in input_item:
+                    deps = input_item["dependencies"]
+                    if isinstance(deps, dict):
+                        # Check if any dependency value starts with this kind's name
+                        for dep_label in deps.values():
+                            if isinstance(dep_label, str) and dep_label.startswith(f"{self.name}-"):
+                                use_serial = True
+                                break
+                    if use_serial:
+                        break
+
+        if use_serial:
+            # Process serially for kinds with internal dependencies
+            tasks = [
+                Task(
+                    self.name,
+                    label=task_dict["label"],
+                    description=task_dict["description"],
+                    attributes=task_dict["attributes"],
+                    task=task_dict["task"],
+                    optimization=task_dict.get("optimization"),
+                    dependencies=task_dict.get("dependencies"),
+                    soft_dependencies=task_dict.get("soft-dependencies"),
+                    if_dependencies=task_dict.get("if-dependencies"),
+                )
+                for task_dict in transforms(trans_config, input_list)
+            ]
+        else:
+            # Process each input through the transforms pipeline in parallel
+
+            def process_single_input(input_item):
+                """Process a single input through the entire transform pipeline."""
+                if wait_for:
+                    wait_for()
+                # Run this input through all transforms
+                task_dicts = list(transforms(trans_config, [input_item]))
+                # Create Task objects from the resulting task dictionaries
+                tasks = []
+                for task_dict in task_dicts:
+                    task = Task(
+                        self.name,
+                        label=task_dict["label"],
+                        description=task_dict["description"],
+                        attributes=task_dict["attributes"],
+                        task=task_dict["task"],
+                        optimization=task_dict.get("optimization"),
+                        dependencies=task_dict.get("dependencies"),
+                        soft_dependencies=task_dict.get("soft-dependencies"),
+                        if_dependencies=task_dict.get("if-dependencies"),
+                    )
+                    tasks.append(task)
+                return tasks
+
+            with ThreadPoolExecutor() as executor:
+                # Process each input in parallel through the transform pipeline
+                future_to_input = {
+                    executor.submit(process_single_input, input_item): input_item
+                    for input_item in input_list
+                }
+
+                # Collect all results, maintaining order
+                tasks = []
+                for input_item in input_list:
+                    for future, orig_input in future_to_input.items():
+                        if orig_input is input_item:
+                            tasks.extend(future.result())
+                            break
+
         logger.info(f"Generated {len(tasks)} tasks for kind {self.name}")
         return tasks
 
