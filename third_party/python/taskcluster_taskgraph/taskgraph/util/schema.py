@@ -62,10 +62,8 @@ def optionally_keyed_by(*arguments):
                         e.prepend([k, kk])
                         raise
                 return res
-        # Thread-safe Schema creation to prevent race conditions when using
-        # ThreadPoolExecutor for parallel task generation
-        with _schema_creation_lock:
-            return Schema(schema)(obj)
+        # Schema.__init__ is now protected by _schema_creation_lock
+        return Schema(schema)(obj)
 
     # set to assist autodoc
     setattr(validator, "schema", schema)
@@ -214,25 +212,39 @@ class Schema(voluptuous.Schema):
     """
 
     def __init__(self, *args, check=True, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Protect Schema initialization for thread safety, especially important for
+        # free-threaded Python where voluptuous internals may not be thread-safe
+        with _schema_creation_lock:
+            super().__init__(*args, **kwargs)
 
-        self.check = check
-        if not taskgraph.fast and self.check:
-            check_schema(self)
+            self.check = check
+            if not taskgraph.fast and self.check:
+                check_schema(self)
 
     def extend(self, *args, **kwargs):
-        schema = super().extend(*args, **kwargs)
+        # Protect Schema.extend() for thread safety
+        with _schema_creation_lock:
+            schema = super().extend(*args, **kwargs)
 
-        if self.check:
-            check_schema(schema)
-        # We want twice extend schema to be checked too.
-        schema.__class__ = Schema
-        return schema
+            if self.check:
+                check_schema(schema)
+            # We want twice extend schema to be checked too.
+            schema.__class__ = Schema
+            return schema
 
     def _compile(self, schema):
         if taskgraph.fast:
             return
-        return super()._compile(schema)
+        # _compile is called from __init__ which is already protected by the lock,
+        # but protect it anyway for safety in case it's called elsewhere
+        with _schema_creation_lock:
+            return super()._compile(schema)
+
+    def __call__(self, data):
+        # Protect schema validation for thread safety in free-threaded Python
+        # voluptuous internals may access shared state during validation
+        with _schema_creation_lock:
+            return super().__call__(data)
 
     def __getitem__(self, item):
         return self.schema[item]  # type: ignore
