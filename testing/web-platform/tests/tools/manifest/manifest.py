@@ -1,4 +1,5 @@
 import os
+import threading
 from atomicwrites import atomic_write
 from copy import deepcopy
 from logging import Logger
@@ -151,6 +152,8 @@ class Manifest:
 
         logger = get_logger()
 
+        # Note: No lock needed here since load_and_update() already serializes
+        # access per manifest file path
         changed = False
 
         # Create local variable references to these dicts so we avoid the
@@ -318,16 +321,36 @@ def load(tests_root: Text, manifest: Union[IO[bytes], Text], types: Optional[Con
 
 
 __load_cache: Dict[Text, Manifest] = {}
+__load_cache_locks: Dict[Text, threading.Lock] = {}
+__cache_dict_lock = threading.Lock()
 
 
-def _load(logger: Logger,
-          tests_root: Text,
-          manifest: Union[IO[bytes], Text],
-          types: Optional[Container[Text]] = None,
-          allow_cached: bool = True
-          ) -> Optional[Manifest]:
+def _get_manifest_lock(manifest_path: Text) -> threading.Lock:
+    """Get or create a lock for a specific manifest path.
+
+    This ensures each manifest file has its own lock to prevent race conditions
+    when multiple threads try to load or update the same manifest concurrently.
+    """
+    with __cache_dict_lock:
+        if manifest_path not in __load_cache_locks:
+            __load_cache_locks[manifest_path] = threading.Lock()
+        return __load_cache_locks[manifest_path]
+
+
+def _load_unlocked(logger: Logger,
+                   tests_root: Text,
+                   manifest: Union[IO[bytes], Text],
+                   types: Optional[Container[Text]] = None,
+                   allow_cached: bool = True
+                   ) -> Optional[Manifest]:
+    """Internal function that loads manifest without acquiring locks.
+
+    Caller must hold the appropriate lock before calling this function.
+    """
     manifest_path = (manifest if isinstance(manifest, str)
                      else manifest.name)
+
+    # Check cache (caller already holds lock)
     if allow_cached and manifest_path in __load_cache:
         return __load_cache[manifest_path]
 
@@ -358,6 +381,23 @@ def _load(logger: Logger,
     return rv
 
 
+def _load(logger: Logger,
+          tests_root: Text,
+          manifest: Union[IO[bytes], Text],
+          types: Optional[Container[Text]] = None,
+          allow_cached: bool = True
+          ) -> Optional[Manifest]:
+    """Load a manifest with proper locking."""
+    manifest_path = (manifest if isinstance(manifest, str)
+                     else manifest.name)
+
+    # Get the lock for this specific manifest path
+    lock = _get_manifest_lock(manifest_path)
+
+    with lock:
+        return _load_unlocked(logger, tests_root, manifest, types, allow_cached)
+
+
 def load_and_update(tests_root: Text,
                     manifest_path: Text,
                     url_base: Text,
@@ -375,47 +415,52 @@ def load_and_update(tests_root: Text,
 
     logger = get_logger()
 
-    manifest = None
-    if not rebuild:
-        try:
-            manifest = _load(logger,
-                             tests_root,
-                             manifest_path,
-                             types=types,
-                             allow_cached=allow_cached)
-        except ManifestVersionMismatch:
-            logger.info("Manifest version changed, rebuilding")
-        except ManifestError:
-            logger.warning("Failed to load manifest, rebuilding")
+    # Get the lock for this specific manifest path to prevent concurrent updates
+    lock = _get_manifest_lock(manifest_path)
 
-        if manifest is not None and manifest.url_base != url_base:
-            logger.info("Manifest url base did not match, rebuilding")
-            manifest = None
-
-    if manifest is None:
-        manifest = Manifest(tests_root, url_base)
-        rebuild = True
-        update = True
-
-    if rebuild or update:
-        logger.info("Updating manifest")
-        for retry in range(2):
+    with lock:
+        manifest = None
+        if not rebuild:
             try:
-                tree = vcs.get_tree(tests_root, manifest, manifest_path, cache_root,
-                                    paths_to_update, working_copy, rebuild)
-                changed = manifest.update(tree, parallel)
-                break
-            except InvalidCacheError:
-                logger.warning("Manifest cache was invalid, doing a complete rebuild")
-                rebuild = True
-        else:
-            # If we didn't break there was an error
-            raise
-        if write_manifest and changed:
-            write(manifest, manifest_path)
-        tree.dump_caches()
+                # Use unlocked version since we already hold the lock
+                manifest = _load_unlocked(logger,
+                                          tests_root,
+                                          manifest_path,
+                                          types=types,
+                                          allow_cached=allow_cached)
+            except ManifestVersionMismatch:
+                logger.info("Manifest version changed, rebuilding")
+            except ManifestError:
+                logger.warning("Failed to load manifest, rebuilding")
 
-    return manifest
+            if manifest is not None and manifest.url_base != url_base:
+                logger.info("Manifest url base did not match, rebuilding")
+                manifest = None
+
+        if manifest is None:
+            manifest = Manifest(tests_root, url_base)
+            rebuild = True
+            update = True
+
+        if rebuild or update:
+            logger.info("Updating manifest")
+            for retry in range(2):
+                try:
+                    tree = vcs.get_tree(tests_root, manifest, manifest_path, cache_root,
+                                        paths_to_update, working_copy, rebuild)
+                    changed = manifest.update(tree, parallel)
+                    break
+                except InvalidCacheError:
+                    logger.warning("Manifest cache was invalid, doing a complete rebuild")
+                    rebuild = True
+            else:
+                # If we didn't break there was an error
+                raise
+            if write_manifest and changed:
+                write(manifest, manifest_path)
+            tree.dump_caches()
+
+        return manifest
 
 
 def write(manifest: Manifest, manifest_path: Text) -> None:

@@ -1,6 +1,7 @@
 import abc
 import os
 import stat
+import threading
 from collections import deque
 from os import stat_result
 from typing import (Any, Dict, Iterable, Iterator, List, MutableMapping, Optional, Set, Text, Tuple,
@@ -12,6 +13,20 @@ from .utils import git
 # Cannot do `from ..gitignore import gitignore` because
 # relative import beyond toplevel throws *ImportError*!
 from gitignore import gitignore  # type: ignore
+
+
+# Global locks for cache files to prevent concurrent access to the same cache file
+# Key is the absolute path to the cache file
+__cache_file_locks: Dict[Text, threading.Lock] = {}
+__cache_locks_lock = threading.Lock()
+
+
+def _get_cache_file_lock(cache_path: Text) -> threading.Lock:
+    """Get or create a lock for a specific cache file path."""
+    with __cache_locks_lock:
+        if cache_path not in __cache_file_locks:
+            __cache_file_locks[cache_path] = threading.Lock()
+        return __cache_file_locks[cache_path]
 
 
 if TYPE_CHECKING:
@@ -151,6 +166,8 @@ class CacheFile(metaclass=abc.ABCMeta):
             os.makedirs(cache_root)
         self.path = os.path.join(cache_root, self.file_name)
         self.modified = False
+        # Use global lock based on cache file path to handle shared cache files
+        self._lock = _get_cache_file_lock(os.path.abspath(self.path))
         self.data = self.load(rebuild)
 
     @abc.abstractproperty
@@ -158,24 +175,26 @@ class CacheFile(metaclass=abc.ABCMeta):
         pass
 
     def dump(self) -> None:
-        if not self.modified:
-            return
-        with open(self.path, 'w') as f:
-            jsonlib.dump_local(self.data, f)
+        with self._lock:
+            if not self.modified:
+                return
+            with open(self.path, 'w') as f:
+                jsonlib.dump_local(self.data, f)
 
     def load(self, rebuild: bool = False) -> Dict[Text, Any]:
-        data: Dict[Text, Any] = {}
-        try:
-            if not rebuild:
-                with open(self.path) as f:
-                    try:
-                        data = jsonlib.load(f)
-                    except ValueError:
-                        pass
-                data = self.check_valid(data)
-        except OSError:
-            pass
-        return data
+        with self._lock:
+            data: Dict[Text, Any] = {}
+            try:
+                if not rebuild:
+                    with open(self.path) as f:
+                        try:
+                            data = jsonlib.load(f)
+                        except ValueError:
+                            pass
+                    data = self.check_valid(data)
+            except OSError:
+                pass
+            return data
 
     def check_valid(self, data: Dict[Text, Any]) -> Dict[Text, Any]:
         """Check if the cached data is valid and return an updated copy of the
@@ -195,11 +214,12 @@ class MtimeCache(CacheFile):
 
         This implicitly updates the cache with the new mtime data."""
         mtime = stat.st_mtime
-        if mtime != self.data.get(rel_path):
-            self.modified = True
-            self.data[rel_path] = mtime
-            return True
-        return False
+        with self._lock:
+            if mtime != self.data.get(rel_path):
+                self.modified = True
+                self.data[rel_path] = mtime
+                return True
+            return False
 
     def check_valid(self, data: Dict[Any, Any]) -> Dict[Any, Any]:
         if data.get("/tests_root") != self.tests_root:
@@ -245,29 +265,37 @@ class GitIgnoreCache(CacheFile, GitIgnoreCacheType):
         except Exception:
             return False
 
-        return key in self.data
+        with self._lock:
+            return key in self.data
 
     def __getitem__(self, key: bytes) -> bool:
         real_key = key.decode("utf-8")
-        v = self.data[real_key]
-        assert isinstance(v, bool)
-        return v
+        with self._lock:
+            v = self.data[real_key]
+            assert isinstance(v, bool)
+            return v
 
     def __setitem__(self, key: bytes, value: bool) -> None:
         real_key = key.decode("utf-8")
-        if self.data.get(real_key) != value:
-            self.modified = True
-            self.data[real_key] = value
+        with self._lock:
+            if self.data.get(real_key) != value:
+                self.modified = True
+                self.data[real_key] = value
 
     def __delitem__(self, key: bytes) -> None:
         real_key = key.decode("utf-8")
-        del self.data[real_key]
+        with self._lock:
+            del self.data[real_key]
 
     def __iter__(self) -> Iterator[bytes]:
-        return (key.encode("utf-8") for key in self.data)
+        with self._lock:
+            # Create a list copy to avoid holding lock during iteration
+            keys = list(self.data.keys())
+        return (key.encode("utf-8") for key in keys)
 
     def __len__(self) -> int:
-        return len(self.data)
+        with self._lock:
+            return len(self.data)
 
 
 def walk(root: bytes) -> Iterable[Tuple[bytes, List[Tuple[bytes, stat_result]], List[Tuple[bytes, stat_result]]]]:
