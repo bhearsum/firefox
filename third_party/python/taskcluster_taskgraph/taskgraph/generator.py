@@ -54,7 +54,7 @@ class Kind:
         assert callable(loader)
         return loader
 
-    def load_tasks(self, parameters, kind_dependencies_tasks, write_artifacts):
+    def load_tasks(self, parameters, kind_dependencies_tasks, write_artifacts, executor=None):
         logger.debug(f"Loading tasks for kind {self.name}")
 
         parameters = Parameters(**parameters)
@@ -115,7 +115,7 @@ class Kind:
                     if use_serial:
                         break
 
-        if use_serial:
+        if use_serial or not executor:
             # Process serially for kinds with internal dependencies
             tasks = [
                 Task(
@@ -157,20 +157,20 @@ class Kind:
                     tasks.append(task)
                 return tasks
 
-            with ThreadPoolExecutor() as executor:
-                # Process each input in parallel through the transform pipeline
-                future_to_input = {
-                    executor.submit(process_single_input, input_item): input_item
-                    for input_item in input_list
-                }
+            # Process each input in parallel through the transform pipeline
+            future_to_input = {
+                executor.submit(process_single_input, input_item): input_item
+                for input_item in input_list
+            }
 
-                # Collect all results, maintaining order
-                tasks = []
-                for input_item in input_list:
-                    for future, orig_input in future_to_input.items():
-                        if orig_input is input_item:
-                            tasks.extend(future.result())
-                            break
+            # Collect all results, maintaining order
+            tasks = []
+            for input_item in input_list:
+                for future, orig_input in future_to_input.items():
+                    if orig_input is input_item:
+                        # TODO: error handling
+                        tasks.extend(future.result())
+                        break
 
         logger.info(f"Generated {len(tasks)} tasks for kind {self.name}")
         return tasks
@@ -404,6 +404,7 @@ class TaskGraphGenerator:
                             if t.kind in kind.config.get("kind-dependencies", [])
                         },
                         self._write_artifacts,
+                        executor,
                     )
                     futures.add(future)
                     futures_to_kind[future] = name
