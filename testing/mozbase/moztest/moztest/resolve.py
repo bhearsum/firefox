@@ -690,6 +690,22 @@ class TestResolver(MozbuildObject):
         self._tests_by_manifest = defaultdict(list)
         self._test_dirs = set()
 
+    def preload(self):
+        # wpt loading and tests by manifest must go first
+        # the latter only needs the former, and it errors out
+        # if other tests are present already
+        self.add_wpt_manifest_data()
+        assert self.tests_by_manifest
+        self.add_puppeteer_manifest_data()
+        self.add_fenix_manifest_data()
+        self.add_focus_manifest_data()
+        self.add_ac_manifest_data()
+        self.add_geckoview_junit_manifest_data()
+        assert self.tests
+        assert self.tests_by_path
+        assert self.tests_by_flavor
+        assert self.test_dirs
+
     @property
     def tests(self):
         if not self._tests_loaded:

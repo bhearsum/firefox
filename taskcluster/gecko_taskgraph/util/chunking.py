@@ -230,10 +230,11 @@ class BaseManifestLoader(metaclass=ABCMeta):
         """
 
 
+import functools
 class DefaultLoader(BaseManifestLoader):
     """Load manifests using metadata from the TestResolver."""
 
-    @memoize
+    @functools.lru_cache(maxsize=None)
     def get_tests(self, suite):
         suite_definition = TEST_SUITES[suite]
         return list(
@@ -245,7 +246,7 @@ class DefaultLoader(BaseManifestLoader):
             )
         )
 
-    @memoize
+    @functools.lru_cache(maxsize=None)
     def get_manifests(self, suite, frozen_mozinfo):
         mozinfo = dict(frozen_mozinfo)
         # Compute all tests for the given suite/subsuite.

@@ -195,6 +195,30 @@ def show_taskgraph(options):
     if options.pop("verbose", False):
         logging.root.setLevel(logging.DEBUG)
 
+    # start loading test manifests immediately in a thread; this saves time later
+    # and works around non-threadsafe behaviour in the TestResolver code
+    def load_test_manifests():
+        from gecko_taskgraph.util.chunking import resolver
+        print("loading wpt")
+        # wpt loading and tests by manifest must go first
+        # the latter only needs the former, and it errors out
+        # if other tests are present already
+        resolver.add_wpt_manifest_data()
+        assert resolver.tests_by_manifest
+        resolver.add_puppeteer_manifest_data()
+        resolver.add_fenix_manifest_data()
+        resolver.add_focus_manifest_data()
+        resolver.add_ac_manifest_data()
+        resolver.add_geckoview_junit_manifest_data()
+        assert resolver.tests
+        assert resolver.tests_by_path
+        assert resolver.tests_by_flavor
+        assert resolver.test_dirs
+
+    import threading
+    test_manifest_thread = threading.Thread(target=load_test_manifests)
+    test_manifest_thread.start()
+
     repo = None
     cur_ref = None
     diffdir = None
@@ -270,6 +294,12 @@ def show_taskgraph(options):
         # to setup its `mach` based logging.
         setup_logging()
 
+    # for now, join before taskgraph generation  to make sure test loading is done
+    # once we know generation works with preloading, we can let this run during
+    # generation, but we'll need to pass a mapping of kinds and the thread
+    # that must be finished before they can run. eg: they must block until it is
+    # done
+    test_manifest_thread.join()
     generate_taskgraph(options, parameters, overrides, logdir)
 
     if options["diff"]:
