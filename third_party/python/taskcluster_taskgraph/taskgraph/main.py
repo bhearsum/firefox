@@ -115,14 +115,14 @@ FORMAT_METHODS = {
 }
 
 
-def get_taskgraph_generator(root, parameters):
+def get_taskgraph_generator(root, parameters, kind_requirements={}):
     """Helper function to make testing a little easier."""
     from taskgraph.generator import TaskGraphGenerator  # noqa: PLC0415
 
-    return TaskGraphGenerator(root_dir=root, parameters=parameters)
+    return TaskGraphGenerator(root_dir=root, parameters=parameters, kind_requirements=kind_requirements)
 
 
-def format_taskgraph(options, parameters, overrides, logfile=None):
+def format_taskgraph(options, parameters, overrides, logfile=None, kind_requirements={}):
     import taskgraph  # noqa: PLC0415
     from taskgraph.parameters import parameters_loader  # noqa: PLC0415
 
@@ -144,7 +144,7 @@ def format_taskgraph(options, parameters, overrides, logfile=None):
             strict=False,
         )
 
-    tgg = get_taskgraph_generator(options.get("root"), parameters)
+    tgg = get_taskgraph_generator(options.get("root"), parameters, kind_requirements)
 
     tg = getattr(tgg, options["graph_attr"])
     tg = get_filtered_taskgraph(tg, options["tasks_regex"], options["exclude_keys"])
@@ -174,7 +174,7 @@ def dump_output(out, path=None, params_spec=None):
     print(out + "\n", file=fh)
 
 
-def generate_taskgraph(options, parameters, overrides, logdir):
+def generate_taskgraph(options, parameters, overrides, logdir, kind_requirements={}):
     from taskgraph.parameters import Parameters  # noqa: PLC0415
 
     def logfile(spec):
@@ -190,7 +190,7 @@ def generate_taskgraph(options, parameters, overrides, logdir):
     # tracebacks a little more readable and avoids additional process overhead.
     if len(parameters) == 1:
         spec = parameters[0]
-        out = format_taskgraph(options, spec, overrides, logfile(spec))
+        out = format_taskgraph(options, spec, overrides, logfile(spec), kind_requirements)
         dump_output(out, options["output_file"])
         return 0
 

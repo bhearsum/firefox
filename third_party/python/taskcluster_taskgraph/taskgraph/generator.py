@@ -210,6 +210,7 @@ class TaskGraphGenerator:
         decision_task_id: str = "DECISION-TASK",
         write_artifacts: bool = False,
         enable_verifications: bool = True,
+        kind_requirements: dict[str, Callable] = {},
     ):
         """
         @param root_dir: root directory containing the Taskgraph config.yml file
@@ -224,6 +225,7 @@ class TaskGraphGenerator:
         self._decision_task_id = decision_task_id
         self._write_artifacts = write_artifacts
         self._enable_verifications = enable_verifications
+        self._kind_requirements = kind_requirements
 
         # start the generator
         self._run = self._run()  # type: ignore
@@ -382,9 +384,21 @@ class TaskGraphGenerator:
                 nonlocal kinds, edges, futures
                 loaded_tasks = all_tasks.copy()
                 kinds_with_deps = {edge[0] for edge in edges}
-                ready_kinds = (
+                unblocked_kinds = (
                     set(kinds) - kinds_with_deps - set(futures_to_kind.values())
                 )
+                ready_kinds = set()
+                for kind in unblocked_kinds:
+                    if req := self._kind_requirements.get(kind, None):
+                        # if a kind has a requirement, and the requirement is
+                        # fulfilled (signified by the function returning True)
+                        # the kind is ready
+                        if req():
+                            ready_kinds.add(kind)
+                    else:
+                        # if a kind doesn't have a requirement, it's ready
+                        # unconditionally
+                        ready_kinds.add(kind)
                 for name in ready_kinds:
                     kind = kinds.get(name)
                     if not kind:

@@ -199,21 +199,7 @@ def show_taskgraph(options):
     # and works around non-threadsafe behaviour in the TestResolver code
     def load_test_manifests():
         from gecko_taskgraph.util.chunking import resolver
-        print("loading wpt")
-        # wpt loading and tests by manifest must go first
-        # the latter only needs the former, and it errors out
-        # if other tests are present already
-        resolver.add_wpt_manifest_data()
-        assert resolver.tests_by_manifest
-        resolver.add_puppeteer_manifest_data()
-        resolver.add_fenix_manifest_data()
-        resolver.add_focus_manifest_data()
-        resolver.add_ac_manifest_data()
-        resolver.add_geckoview_junit_manifest_data()
-        assert resolver.tests
-        assert resolver.tests_by_path
-        assert resolver.tests_by_flavor
-        assert resolver.test_dirs
+        resolver.preload()
 
     import threading
     test_manifest_thread = threading.Thread(target=load_test_manifests)
@@ -299,8 +285,21 @@ def show_taskgraph(options):
     # generation, but we'll need to pass a mapping of kinds and the thread
     # that must be finished before they can run. eg: they must block until it is
     # done
+    def is_ready():
+        test_manifest_thread.join(.001)
+        if test_manifest_thread.is_alive():
+            return False
+        return True
+
+    kind_requirements = {
+        "test": is_ready,
+        "reftest": is_ready,
+        "mochitest": is_ready,
+        "web-platform-tests": is_ready,
+        "browsertime": is_ready,
+    }
+    generate_taskgraph(options, parameters, overrides, logdir, kind_requirements)
     test_manifest_thread.join()
-    generate_taskgraph(options, parameters, overrides, logdir)
 
     if options["diff"]:
         assert diffdir is not None
