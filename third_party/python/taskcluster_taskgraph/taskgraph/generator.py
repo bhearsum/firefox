@@ -54,7 +54,7 @@ class Kind:
         assert callable(loader)
         return loader
 
-    def load_tasks(self, parameters, kind_dependencies_tasks, write_artifacts, executor=None):
+    def load_tasks(self, parameters, kind_dependencies_tasks, write_artifacts, executor=None, wait_for: Callable | None = None):
         logger.debug(f"Loading tasks for kind {self.name}")
 
         parameters = Parameters(**parameters)
@@ -384,21 +384,9 @@ class TaskGraphGenerator:
                 nonlocal kinds, edges, futures
                 loaded_tasks = all_tasks.copy()
                 kinds_with_deps = {edge[0] for edge in edges}
-                unblocked_kinds = (
+                ready_kinds = (
                     set(kinds) - kinds_with_deps - set(futures_to_kind.values())
                 )
-                ready_kinds = set()
-                for kind in unblocked_kinds:
-                    if req := self._kind_requirements.get(kind, None):
-                        # if a kind has a requirement, and the requirement is
-                        # fulfilled (signified by the function returning True)
-                        # the kind is ready
-                        if req():
-                            ready_kinds.add(kind)
-                    else:
-                        # if a kind doesn't have a requirement, it's ready
-                        # unconditionally
-                        ready_kinds.add(kind)
                 for name in ready_kinds:
                     kind = kinds.get(name)
                     if not kind:
@@ -419,6 +407,7 @@ class TaskGraphGenerator:
                         },
                         self._write_artifacts,
                         executor,
+                        self._kind_requirements.get(name)
                     )
                     futures.add(future)
                     futures_to_kind[future] = name
