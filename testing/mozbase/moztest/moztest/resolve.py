@@ -672,7 +672,6 @@ class TestResolver(MozbuildObject):
 
         self.load_tests = self._spawn(loader_cls)
         self._tests = []
-        self._reset_state()
 
         # These suites aren't registered in moz.build so require special handling.
         self._puppeteer_loaded = False
@@ -683,8 +682,6 @@ class TestResolver(MozbuildObject):
         self._tests_loaded = False
         self._wpt_loaded = False
         self.meta_tags = {}
-
-    def _reset_state(self):
         self._tests_by_path = defaultdict(list)
         self._tests_by_flavor = defaultdict(set)
         self._tests_by_manifest = defaultdict(list)
@@ -709,7 +706,6 @@ class TestResolver(MozbuildObject):
     @property
     def tests(self):
         if not self._tests_loaded:
-            self._reset_state()
             for test in self.load_tests():
                 self._tests.append(test)
             self._tests_loaded = True
@@ -953,8 +949,6 @@ class TestResolver(MozbuildObject):
         if self._puppeteer_loaded:
             return
 
-        self._reset_state()
-
         test_path = os.path.join(self.topsrcdir, "remote", "test", "puppeteer", "test")
         for root, dirs, paths in os.walk(test_path):
             for filename in fnmatch.filter(paths, "*.spec.js"):
@@ -980,8 +974,6 @@ class TestResolver(MozbuildObject):
     def add_fenix_manifest_data(self):
         if self._fenix_loaded:
             return
-
-        self._reset_state()
 
         test_path = os.path.join(
             self.topsrcdir, "mobile", "android", "fenix", "app", "src", "test", "java"
@@ -1011,8 +1003,6 @@ class TestResolver(MozbuildObject):
     def add_focus_manifest_data(self):
         if self._focus_loaded:
             return
-
-        self._reset_state()
 
         test_path = os.path.join(
             self.topsrcdir,
@@ -1050,8 +1040,6 @@ class TestResolver(MozbuildObject):
         if self._ac_loaded:
             return
 
-        self._reset_state()
-
         test_path = os.path.join(
             self.topsrcdir, "mobile", "android", "android-components"
         )
@@ -1082,8 +1070,6 @@ class TestResolver(MozbuildObject):
     def add_geckoview_junit_manifest_data(self):
         if self._geckoview_junit_loaded:
             return
-
-        self._reset_state()
 
         test_path = os.path.join(
             self.topsrcdir,
@@ -1188,8 +1174,6 @@ class TestResolver(MozbuildObject):
         """
         if self._wpt_loaded:
             return
-
-        self._reset_state()
 
         wpt_path = os.path.join(self.topsrcdir, "testing", "web-platform")
         sys.path = [wpt_path] + sys.path
