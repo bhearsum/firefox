@@ -116,6 +116,8 @@ class Kind:
                         break
 
         if use_serial or not executor:
+            if wait_for:
+                wait_for()
             # Process serially for kinds with internal dependencies
             tasks = [
                 Task(
