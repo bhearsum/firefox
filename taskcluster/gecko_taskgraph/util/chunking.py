@@ -14,7 +14,7 @@ from manifestparser import TestManifest
 from manifestparser.filters import chunk_by_runtime, tags
 from mozbuild.util import memoize
 from mozinfo.platforminfo import PlatformInfo
-from moztest.resolve import TEST_SUITES, TestManifestLoader, TestResolver
+from moztest.resolve import TEST_SUITES
 from requests.exceptions import RetryError
 from taskgraph.util import json
 from taskgraph.util.yaml import load_yaml
@@ -23,8 +23,6 @@ from gecko_taskgraph import GECKO, TEST_CONFIGS
 from gecko_taskgraph.util.bugbug import CT_LOW, BugbugTimeoutException, push_schedules
 
 logger = logging.getLogger(__name__)
-here = os.path.abspath(os.path.dirname(__file__))
-resolver = TestResolver.from_environment(cwd=here, loader_cls=TestManifestLoader)
 
 VARIANTS_YML = os.path.join(TEST_CONFIGS, "variants.yml")
 TEST_VARIANTS = {}
@@ -234,7 +232,7 @@ class DefaultLoader(BaseManifestLoader):
     """Load manifests using metadata from the TestResolver."""
 
     @memoize
-    def get_tests(self, suite):
+    def get_tests(self, suite, resolver):
         suite_definition = TEST_SUITES[suite]
         return list(
             resolver.resolve_tests(
@@ -246,10 +244,10 @@ class DefaultLoader(BaseManifestLoader):
         )
 
     @memoize
-    def get_manifests(self, suite, frozen_mozinfo):
+    def get_manifests(self, suite, frozen_mozinfo, resolver):
         mozinfo = dict(frozen_mozinfo)
         # Compute all tests for the given suite/subsuite.
-        tests = self.get_tests(suite)
+        tests = self.get_tests(suite, resolver)
 
         if "web-platform-tests" in suite:
             manifests = set()

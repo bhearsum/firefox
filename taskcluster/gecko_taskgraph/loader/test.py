@@ -9,13 +9,14 @@ import logging
 import os
 
 from mozbuild.util import memoize
+from moztest.resolve import TestManifestLoader, TestResolver
 from taskgraph.loader.transform import loader as transform_loader
 from taskgraph.util.copy import deepcopy
 from taskgraph.util.yaml import load_yaml
 
 from gecko_taskgraph import TEST_CONFIGS
-from gecko_taskgraph.util.chunking import resolver
 
+here = os.path.abspath(os.path.dirname(__file__))
 logger = logging.getLogger(__name__)
 
 ARTIFACTS_DIR = "artifacts"
@@ -47,6 +48,8 @@ def loader(kind, path, config, params, loaded_tasks, write_artifacts):
     tests = transform_loader(kind, path, config, params, loaded_tasks, write_artifacts)
     test_descriptions = {t.pop("name"): t for t in tests}
 
+    # lol, not the right way to share this
+    config["resolver"] = TestResolver.from_environment(cwd=here, loader_cls=TestManifestLoader)
     # generate all tests for all test platforms
     for test_platform_name, test_platform in test_platforms.items():
         for test_name in test_platform["test-names"]:

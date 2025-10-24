@@ -106,6 +106,7 @@ def set_test_manifests(config, tasks):
         task["test-manifests"] = loader.get_manifests(
             task["suite"],
             frozenset(mozinfo.items()),
+            config.config["resolver"]
         )
 
         # When scheduling with test paths, we often find manifests scheduled but all tests
