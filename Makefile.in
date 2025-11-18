@@ -101,6 +101,30 @@ recurse_pre-export:
 # For the binaries rule, not all the install manifests matter, so force only
 # the interesting ones to be done.
 recurse_pre-export: install-manifests
+
+# Generate taskgraph in parallel with other work done by the build system. In artifact
+# builds, `pre-export` is the best place to do this, as it is the most expensive phase, so
+# we're unlikely to end up increasing the time in the critical path. In non-artifact builds
+# the compile phase is preferable.
+ifndef MOZ_AUTOMATION
+ifdef MOZ_ARTIFACT_BUILDS
+recurse_pre-export: | taskgraph-gen
+else
+recurse_compile: | taskgraph-gen
+endif
+endif
+
+.PHONY: taskgraph-gen
+taskgraph-gen:
+	@echo Generating taskgraph...
+	+@tmpfile=$$(mktemp); \
+	cd $(topsrcdir) && $(PYTHON3) $(topsrcdir)/mach try generate-taskgraph 2>&1 >$$tmpfile; \
+	exitcode=$$?; \
+	if [ $$exitcode -ne 0 ]; then \
+	    sed 's/^/[taskgraph] /' <$$tmpfile >&2; \
+	fi; \
+	rm -f $$tmpfile; \
+	exit 0
 binaries::
 	@$(MAKE) install-manifests install_manifests=dist/include
 
