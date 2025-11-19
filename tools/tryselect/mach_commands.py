@@ -12,6 +12,8 @@ from mach.decorators import Command, SubCommand
 from mach.util import get_state_dir
 from mozbuild.util import memoize
 
+from tryselect.tasks import generate_tasks
+
 CONFIG_ENVIRONMENT_NOT_FOUND = """
 No config environment detected. This means we are unable to properly
 detect test files in the specified paths or tags. Please run:
@@ -215,6 +217,22 @@ def try_default(command_context, argv=None, **kwargs):
         argv=argv,
         **kwargs,
     )
+
+
+@SubCommand(
+    "try",
+    "generate-taskgraph",
+    description="Generate and cache taskgraph",
+    virtualenv_name="try"
+)
+def generate_taskgraph(command_context, **kwargs):
+    # generate_tasks generates and caches taskgraph if not already found in
+    # cache. this allows us to easily cache the taskgraph generation as part
+    # of `./mach build`. because this command is meant to be called by the
+    # build system, we don't support any arguments here; we simply cache the
+    # two main invocations: full and non-full task generation.
+    generate_tasks()
+    generate_tasks(full=True)
 
 
 @SubCommand(
