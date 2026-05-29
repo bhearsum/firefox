@@ -11,6 +11,7 @@ complexities of worker implementations, scopes, and treeherder annotations.
 import datetime
 import functools
 import hashlib
+import json
 import os
 import re
 import time
@@ -1336,7 +1337,7 @@ class ShipitNightlyMetadataSchema(Schema, forbid_unknown_fields=True, kw_only=Tr
     channel: str
     version: str
     buildid: str
-    locales: list[str]
+    locales_file: str
 
 
 class PushAddonsSchema(Schema, forbid_unknown_fields=False, kw_only=True):
@@ -1440,12 +1441,14 @@ def build_ship_it_maybe_release_payload(config, task, task_def):
 
 @payload_builder("shipit-nightly-metadata", schema=ShipitNightlyMetadataSchema)
 def build_ship_it_nightly_metadata_payload(_, task, task_def):
+    locales_file = worker.get("locales-file")
+    locales = json.loads(open(locales_file).read()).keys()
     task_def["payload"] = {
         "product": task["worker"]["product"],
         "channel": task["worker"]["channel"],
         "version": task["worker"]["version"],
         "buildid": task["worker"]["buildid"],
-        "locales": task["worker"]["locales"],
+        "locales": locales,
     }
 
 

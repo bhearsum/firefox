@@ -49,5 +49,8 @@ tasks:
             channel: nightly
             buildid: "{moz_build_date}"
             version: "{version}"
-            # TODO: probably needs to move to a transform?
-            locales: ["af", "de", "en-US", "ru"]
+            # TODO: resolve keyed by
+            locales-file:
+                by-project:
+                    try: browser/locales/l10n-onchange-changesets.json
+                    default: browser/locales/l10n-changesets.json
